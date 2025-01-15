@@ -1,43 +1,36 @@
+const express = require('express');
 const WebSocket = require('ws');
+const http = require('http');
 
-exports.handler = async (event, context) => {
-  if (event.headers['Upgrade'] !== 'websocket') {
-    return {
-      statusCode: 400,
-      body: 'Invalid WebSocket request',
-    };
-  }
+// Create an Express server
+const app = express();
+const server = http.createServer(app);
 
-  // Connect to the target WebSocket server
+// Create WebSocket server that listens for incoming WebSocket connections
+const wss = new WebSocket.Server({ server });
+
+wss.on('connection', (ws) => {
+  console.log('Client connected');
+
+  // Create WebSocket connection to the target server
   const targetSocket = new WebSocket('wss://filaments.hrfee.pw/socket');
 
-  // Accept the WebSocket connection from the client
-  const socket = new WebSocket('wss://dummy-url'); // Placeholder since Netlify can't accept WebSocket on its own
-
-  // When the target WebSocket connection is open, forward messages
-  targetSocket.on('open', () => {
-    // Forward messages from the client to the target WebSocket server
-    socket.on('message', (message) => {
-      targetSocket.send(message);
-    });
-
-    // Forward messages from the target WebSocket server back to the client
-    targetSocket.on('message', (message) => {
-      socket.send(message);
-    });
-
-    // Handle connection close for both sockets
-    socket.on('close', () => targetSocket.close());
-    targetSocket.on('close', () => socket.close());
+  // Relay messages from the client to the target WebSocket server
+  ws.on('message', (message) => {
+    targetSocket.send(message);
   });
 
-  // Return the response for the WebSocket upgrade
-  return {
-    statusCode: 101,
-    statusText: 'Switching Protocols',
-    headers: {
-      'Connection': 'Upgrade',
-      'Upgrade': 'websocket',
-    },
-  };
-};
+  // Relay messages from the target WebSocket server back to the client
+  targetSocket.on('message', (message) => {
+    ws.send(message);
+  });
+
+  // Close connections when either side closes
+  ws.on('close', () => targetSocket.close());
+  targetSocket.on('close', () => ws.close());
+});
+
+// Start the HTTP server on port 8080
+server.listen(8080, () => {
+  console.log('WebSocket Proxy server running on ws://localhost:8080');
+});
